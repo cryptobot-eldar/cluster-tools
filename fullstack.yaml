@@ -1,0 +1,177 @@
+version: "3.4"
+
+services:
+  prometheus:
+    image: "prom/prometheus:0.18.0"
+    command: "-config.file=/etc/prometheus/prometheus.yaml -alertmanager.url=http://alertmanager:9093"
+    volumes:
+      - "prometheus_data:/prometheus"
+    configs:
+     - source: "prometheus.yaml"
+       target: "/etc/prometheus/prometheus.yaml"
+     - source: "alert.rules"
+       target: "/etc/prometheus/alert.rules"
+    networks:
+      - default
+      - proxy_net
+    deploy:
+      labels:
+        traefik.port: 9090
+        traefik.frontend.rule: "Host:prometheus.local"
+        traefik.docker.network: "proxy_net"
+  redis:
+    image: "redis:4.0.6-alpine"
+  alertmanager:
+    image: prom/alertmanager:0.1.1
+    configs:
+     - source: "alertmanager.yml"
+       target: "/alertmanager.yml"
+    command: "-config.file=/alertmanager.yml"
+  node-exporter:
+    image: prom/node-exporter
+    ports:
+      - '9100:9100'
+  grafana:
+    image: grafana/grafana:4.6.3
+    environment:
+      GF_PATHS_CONFIG: "/grafana.ini"
+    configs:
+      - grafana.ini
+    volumes:
+      - "grafana_data:/data"
+    networks:
+      - default
+      - proxy_net
+    deploy:
+      labels:
+        traefik.port: 3000
+        traefik.frontend.rule: "Host:grafana.local"
+        traefik.docker.network: "proxy_net"
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.4.0
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    configs:
+      - source: elastic_config
+        target: /usr/share/elasticsearch/config/elasticsearch.yml
+    volumes:
+      - "elastic_data:/usr/share/elasticsearch/data"
+    environment:
+      ES_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - default
+      - proxy_net
+  logstash:
+    image: docker.elastic.co/logstash/logstash-oss:6.4.0
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    configs:
+      - source: logstash_config
+        target: /usr/share/logstash/config/logstash.yml
+      - source: logstash_pipeline
+        target: /usr/share/logstash/pipeline/logstash.conf
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - default
+      - proxy_net
+  kibana:
+    image: docker.elastic.co/kibana/kibana-oss:6.4.0
+    ports:
+      - "5601:5601"
+    configs:
+      - source: kibana_config
+        target: /usr/share/kibana/config/kibana.yml
+    networks:
+      - default
+      - proxy_net
+    deploy:
+      labels:
+        traefik.port: 5601
+        traefik.frontend.rule: "Host:kibana.local"
+        traefik.docker.network: "proxy_net"
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:6.2.2
+    command: filebeat -e -strict.perms=false
+    user: root
+    #volumnes mount depend on you OS ( Windows or Linux )
+    configs:
+      - source: filebeat.yml
+        target: /usr/share/filebeat/filebeat.yml
+    volumes:
+      - /var/lib/docker/containers:/hostfs/var/lib/docker/containers:rw
+    networks:
+      - default
+      - proxy_net
+  jenkins:
+#    image: jenkins/jenkins:lts 
+    image: egaraev/jenkins-docker:latest
+    ports:
+      - "50000:50000"
+      - "81:8080"
+    volumes:
+      - "jenkins_data:/var/jenkins_home"
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - default
+      - proxy_net
+#    deploy:
+#      labels:
+#        traefik.port: 8080
+#        traefik.frontend.rule: "Host:jenkins.local"
+#        traefik.docker.network: "proxy_net"
+
+
+
+volumes:
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: nfs4
+      o: "addr=127.0.0.1"
+      device: ":/prometheus"
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: nfs4
+      o: "addr=127.0.0.1"
+      device: ":/grafana"
+  elastic_data:
+    driver: local
+    driver_opts:
+      type: nfs4
+      o: "addr=127.0.0.1"
+      device: ":/elastic"
+  jenkins_data:
+    driver: local
+    driver_opts:
+      type: nfs4
+      o: "addr=127.0.0.1"
+      device: ":/jenkins" 
+
+
+configs:
+  prometheus.yaml:
+    file: "./prometheus.yaml"
+  grafana.ini:
+    file: "./grafana.ini"
+  alertmanager.yml:
+    file: "./alertmanager.yml"
+  alert.rules:
+    file: "./alert.rules"
+  elastic_config:
+    file: "./elasticsearch/config/elasticsearch.yml"
+  logstash_config:
+    file: ./logstash/config/logstash.yml
+  logstash_pipeline:
+    file: ./logstash/pipeline/logstash.conf
+  kibana_config:
+    file: ./kibana/config/kibana.yml
+  filebeat.yml:
+    file: ./filebeat/filebeat.yml
+
+networks:
+  proxy_net:
+    external: true
