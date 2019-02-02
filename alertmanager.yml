@@ -5,5 +5,5 @@ receivers:
       slack_configs:
           - send_resolved: true
             username: 'Prometheus'
-            channel: '#random'
+            channel: '#alerts'
             api_url: 'https://hooks.slack.com/services/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'
